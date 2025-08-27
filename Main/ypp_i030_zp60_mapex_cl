@@ -1,0 +1,829 @@
+******************
+*Class Definition*
+******************
+CLASS lcl_zp60_mapex DEFINITION PRIVATE.
+
+  PUBLIC SECTION.
+
+    CONSTANTS :
+      co_check1     TYPE string VALUE ' AND( status = ''X'')' ##NO_TEXT,
+      co_check2     TYPE string VALUE '( status = ''X'')' ##NO_TEXT,
+      co_adobe_form TYPE fpname VALUE 'YPP_ADF_F090_MAPEX',
+      co_file_name  TYPE string VALUE '\CVR_I030_MAPEX.',
+      co_tvr        TYPE string VALUE 'ZCVR_MAPEX_DIRECTORY',
+      co_tvror      TYPE rvari_val_255 VALUE 'ORIGINAL',
+      co_output_dec TYPE rspopname VALUE 'LP01',
+      co_aufnr      TYPE string VALUE 'aufnr',
+      co_plnbez     TYPE string VALUE 'plnbez',
+      co_werks      TYPE string VALUE 'werks',
+      co_auart      TYPE string VALUE 'auart',
+      co_cysqnr     TYPE string VALUE 'cy_seqnr',
+      co_arbpl      TYPE string VALUE 'arbpl',
+      co_gstrp      TYPE string VALUE 'gstrp',
+      co_gltrp      TYPE string VALUE 'gltrp',
+      co_zkdauf     TYPE string VALUE 'zkdauf',
+      co_zkdpos     TYPE string VALUE 'zkdpos',
+      co_mtart      TYPE string VALUE 'mtart',
+      co_abb        TYPE string VALUE 'ABB',
+      co_pub        TYPE string VALUE 'PUB',
+      co_zpal       TYPE string VALUE 'ZPAL',
+      co_zpa2       TYPE string VALUE 'ZPA2',
+      co_unbw       TYPE string VALUE 'UNBW',
+      co_roh        TYPE string VALUE 'ROH',
+      co_halb       TYPE string VALUE 'HALB',
+      co_fert       TYPE string VALUE 'FERT',
+      co_file_type  TYPE string VALUE '.txt',
+      co_sep        TYPE string VALUE ';',
+      co_1          TYPE string VALUE '1',
+      co_2          TYPE string VALUE '2',
+      co_eq(2)      TYPE c VALUE 'EQ',
+      co_undsr      TYPE c VALUE '_',
+      co_e          TYPE c VALUE 'E',
+      co_i          TYPE c VALUE 'I',
+      co_w          TYPE c VALUE 'W',
+      co_s          TYPE c VALUE 'S'.
+
+    CONSTANTS:
+      co_language     TYPE sy-langu VALUE 'E',
+      co_start_string TYPE tdline
+        VALUE 'PRODUCTION INSTRUCTIONS:',
+      co_end_string   TYPE tdline
+        VALUE 'END OF PRODUCTION INSTRUCTIONS'.
+
+    CLASS-DATA: sv_ctry   TYPE atinn,
+                so_singleton type ref to lcl_zp60_mapex .
+
+    DATA :
+      mt_hdr       TYPE TABLE OF ycds_pp_zp60_header_data,
+      mt_itm       TYPE TABLE OF ycds_pp_zp60_item_data,
+      mt_form_head TYPE ytpp_f090_header,
+      mt_form_item TYPE ytpp_f090_item,
+      mt_file_data TYPE tt_text_file.
+
+    CLASS-METHODS :
+      get_instance RETURNING VALUE(re_obj) Type ref to lcl_zp60_mapex,
+      screen_output,
+      clear_parameter CHANGING cv_path TYPE string,
+      f4_path         RETURNING VALUE(rv_path) TYPE string,
+
+      matnr_output IMPORTING iv_matnr        TYPE matnr
+                   RETURNING VALUE(rv_matnr) TYPE string,
+
+      alpha_output IMPORTING iv_alpha        TYPE any
+                   RETURNING VALUE(rv_alpha) TYPE string,
+
+      get_medium_txt IMPORTING iv_text        TYPE any
+                     RETURNING VALUE(rv_text) TYPE  scrtext_m,
+
+      dec_2_txt    IMPORTING iv_dec         TYPE any
+                   RETURNING VALUE(rv_text) TYPE string,
+
+      dec_2_txt_coma    IMPORTING iv_dec         TYPE any
+                        RETURNING VALUE(rv_text) TYPE string.
+
+    METHODS :
+      get_data      IMPORTING iv_status TYPE c,
+      download_data IMPORTING iv_path TYPE string,
+      upload_data IMPORTING iv_path TYPE string,
+      display_form,
+      display_alv,
+      on_function
+        FOR EVENT if_salv_events_functions~added_function
+        OF cl_salv_events_hierseq
+        IMPORTING e_salv_function.
+
+  PRIVATE SECTION.
+
+    CLASS-METHODS :
+      sel_header IMPORTING iv_status         TYPE c
+                 RETURNING VALUE(rv_hdr_sel) TYPE string,
+      sel_item   RETURNING VALUE(rv_itm_sel) TYPE string,
+      get_file_path IMPORTING iv_path             TYPE string
+                    RETURNING VALUE(rv_full_path) TYPE string.
+
+    METHODS:
+      constructor,
+      get_file_data RETURNING VALUE(rt_file_data) TYPE tt_text_file,
+      set_column_values
+        IMPORTING
+          io_col   TYPE salv_t_column_ref
+          iv_level TYPE i .
+
+ENDCLASS.
+
+
+**********************
+*Class Implementation*
+**********************
+CLASS lcl_zp60_mapex IMPLEMENTATION.
+
+  METHOD screen_output.
+    LOOP AT SCREEN.
+
+      IF screen-group1 = 'HID' AND
+        sy-title+0(13) <> 'Edit Variants'.
+        screen-active = 0.
+        MODIFY SCREEN.
+      ENDIF.
+
+    ENDLOOP.
+    IF sy-ucomm = 'P'.
+      CLEAR p_path.
+    ENDIF.
+
+  ENDMETHOD.
+
+* Method implementation for creating the instance
+  METHOD get_instance.
+    IF so_singleton i bound.
+        re_obj = so_singleton.
+    ELSE.
+        create OBJECT so_singleton.
+        re_obj = so_singleton.
+    ENDIF.
+  ENDMETHOD.
+
+* Method implementation for setting defaule values
+*  for selection parameter
+  METHOD constructor.
+
+    DATA: lv_ainn TYPE  atinn .
+
+    LOOP AT VALUE tt_atnam( ( 'Y_CAPACITY' )
+                            ( 'Y_FR_CVR_PRODUCT_GROUP' )
+                            ( 'Y_FR_CVR_MINIMUM_STRENGTH' )
+                            ( 'Y_SPECIFIC_GRAVITY' )
+                            ( 'Y_COUNTRY_DESTINATION' ) )
+      ASSIGNING FIELD-SYMBOL(<fs_char_list>).
+
+      CALL FUNCTION 'CONVERSION_EXIT_ATINN_INPUT'
+        EXPORTING
+          input  = <fs_char_list>
+        IMPORTING
+          output = lv_ainn.
+
+      CASE <fs_char_list>.
+        WHEN 'Y_CAPACITY'.
+          p_capcty = lv_ainn.
+        WHEN 'Y_FR_CVR_PRODUCT_GROUP'.
+          p_prodct = lv_ainn.
+        WHEN 'Y_FR_CVR_MINIMUM_STRENGTH'.
+          p_minstr = lv_ainn.
+        WHEN 'Y_SPECIFIC_GRAVITY'.
+          p_spegra = lv_ainn.
+        WHEN 'Y_COUNTRY_DESTINATION'.
+          sv_ctry = lv_ainn.
+      ENDCASE.
+
+    ENDLOOP.
+
+    p_langue = lcl_zp60_mapex=>co_language.
+    p_str_st = lcl_zp60_mapex=>co_start_string.
+    p_end_st = lcl_zp60_mapex=>co_end_string.
+
+  ENDMETHOD.
+
+  METHOD clear_parameter.
+
+    CASE sy-ucomm.
+      WHEN 'P'.
+        CASE p_appsv.
+          WHEN abap_true.
+            SELECT SINGLE high FROM tvarvc
+              WHERE name = @lcl_zp60_mapex=>co_tvr
+              AND   type = @lcl_zp60_mapex=>co_s
+              AND   low  = @lcl_zp60_mapex=>co_tvror
+              INTO @p_path.
+            IF sy-subrc <> 0.
+              CLEAR cv_path.
+            ENDIF.
+          WHEN OTHERS.
+            CLEAR cv_path.
+        ENDCASE.
+    ENDCASE.
+
+  ENDMETHOD.
+
+* Method implementation for file path
+  METHOD f4_path.
+
+    IF p_local EQ abap_true.
+
+      CALL METHOD cl_gui_frontend_services=>directory_browse
+        CHANGING
+          selected_folder      = rv_path
+        EXCEPTIONS
+          cntl_error           = 1
+          error_no_gui         = 2
+          not_supported_by_gui = 3
+          OTHERS               = 4.
+      IF sy-subrc = 0 AND rv_path IS INITIAL.
+        MESSAGE s002(zpp_cvr) DISPLAY LIKE lcl_zp60_mapex=>co_e.
+      ENDIF.
+
+    ELSE.
+
+*     To Prefill the file path
+      SELECT low, high FROM tvarvc
+        WHERE name = @lcl_zp60_mapex=>co_tvr
+        AND   type = @lcl_zp60_mapex=>co_s
+        INTO TABLE @DATA(lt_tvar).
+      IF sy-subrc <> 0.
+        CLEAR lt_tvar.
+      ENDIF.
+
+      CALL FUNCTION '/SAPDMC/LSM_F4_SERVER_FILE'
+        EXPORTING
+          directory        = VALUE #( lt_tvar[ low = co_tvror ]-high OPTIONAL )
+        IMPORTING
+          serverfile       = rv_path
+        EXCEPTIONS
+          canceled_by_user = 1
+          OTHERS           = 2.
+      IF sy-subrc <> 0.
+        CLEAR rv_path.
+      ENDIF.
+
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD on_function.
+
+    CASE e_salv_function.
+      WHEN '&SAVE'.
+*       Priview Adobe form
+        me->display_form( ).
+    ENDCASE.
+
+  ENDMETHOD.
+
+  METHOD matnr_output.
+
+    CALL FUNCTION 'CONVERSION_EXIT_MATN1_OUTPUT'
+      EXPORTING
+        input  = iv_matnr
+      IMPORTING
+        output = rv_matnr.
+
+  ENDMETHOD.
+
+  METHOD alpha_output.
+
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+      EXPORTING
+        input  = iv_alpha
+      IMPORTING
+        output = rv_alpha.
+
+    CONDENSE rv_alpha.
+
+  ENDMETHOD.
+
+  METHOD get_medium_txt.
+
+    rv_text = iv_text.
+
+  ENDMETHOD.
+
+  METHOD dec_2_txt.
+
+    DATA lv_int TYPE i.
+    lv_int = iv_dec.
+    IF iv_dec = lv_int.
+      rv_text = lv_int.
+      CONDENSE rv_text.
+    ELSE.
+      rv_text = iv_dec.
+      CONDENSE rv_text.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD dec_2_txt_coma.
+
+    DATA lv_int TYPE i.
+    lv_int = iv_dec.
+    IF iv_dec = lv_int.
+      rv_text = lv_int.
+      CONDENSE rv_text.
+    ELSE.
+      rv_text = iv_dec.
+      CONDENSE rv_text.
+    ENDIF.
+
+    REPLACE ALL OCCURRENCES OF '.' IN rv_text WITH ',' .
+
+  ENDMETHOD.
+
+* Method Implementation to Get Data
+  METHOD get_data.
+
+    yamdp_cl_pp_zp60=>get_amdp_data(
+        EXPORTING
+          ifilter_header = lcl_zp60_mapex=>sel_header( iv_status )
+          ifilter_item   = lcl_zp60_mapex=>sel_item( )
+          icountry       = sv_ctry
+          ilanguage      = p_langue
+          icapacity      = p_capcty
+          iproduct       = p_prodct
+          iminstrength   = p_minstr
+          ispecgravity   = p_spegra
+
+        IMPORTING
+            et_hd = me->mt_hdr
+            et_it = me->mt_itm
+    ).
+
+
+    IF me->mt_hdr IS NOT INITIAL.
+
+      MOVE-CORRESPONDING me->mt_hdr
+        TO me->mt_form_head.                 "#EC CI_FLDEXT_OK[2215424]
+      MOVE-CORRESPONDING me->mt_itm
+        TO me->mt_form_item.                 "#EC CI_FLDEXT_OK[2215424]
+
+    ENDIF.
+
+  ENDMETHOD.
+
+* Method Implementation for Data Download
+  METHOD download_data.
+
+*   Converting data into Semicolon Separated data
+    DATA(lt_text_data) = me->get_file_data( ).
+
+    CALL METHOD cl_gui_frontend_services=>gui_download
+      EXPORTING
+        filename                = me->get_file_path( iv_path )
+      CHANGING
+        data_tab                = lt_text_data
+      EXCEPTIONS
+        file_write_error        = 1
+        no_batch                = 2
+        gui_refuse_filetransfer = 3
+        invalid_type            = 4
+        no_authority            = 5
+        unknown_error           = 6
+        header_not_allowed      = 7
+        separator_not_allowed   = 8
+        filesize_not_allowed    = 9
+        header_too_long         = 10
+        dp_error_create         = 11
+        dp_error_send           = 12
+        dp_error_write          = 13
+        unknown_dp_error        = 14
+        access_denied           = 15
+        dp_out_of_memory        = 16
+        disk_full               = 17
+        dp_timeout              = 18
+        file_not_found          = 19
+        dataprovider_exception  = 20
+        control_flush_error     = 21
+        not_supported_by_gui    = 22
+        error_no_gui            = 23
+        OTHERS                  = 24.
+    IF sy-subrc <> 0.
+      CLEAR lt_text_data.
+    ENDIF.
+
+  ENDMETHOD.
+
+* Method Implementation to upload data to
+*  Application Server
+  METHOD upload_data.
+
+    DATA: lv_fail_dir TYPE string VALUE 'file'.
+
+    CALL METHOD ycl_cvr_utility_class=>upload_file_app_server
+      EXPORTING
+        im_app_path  = CONV char255( me->get_file_path( iv_path ) )
+        im_file_data = COND #(
+                          WHEN me->mt_file_data IS NOT INITIAL
+                          THEN me->mt_file_data
+                          ELSE me->get_file_data( ) )
+      RECEIVING
+        rv_flag      = DATA(lv_flag).
+
+    IF lv_flag = abap_true.
+      MESSAGE s005(zpp_cvr) WITH lv_fail_dir DISPLAY LIKE co_w.
+    ENDIF.
+
+  ENDMETHOD.
+
+* Method implementation for calling Adobe form
+  METHOD display_form.
+
+    DATA: lv_fmname TYPE funcname.
+
+    DATA(ls_params) = VALUE sfpoutputparams(
+                         preview = abap_true
+                         dest = co_output_dec
+                         nodialog = abap_true ).
+
+    CALL FUNCTION 'FP_JOB_OPEN'
+      CHANGING
+        ie_outputparams = ls_params
+      EXCEPTIONS
+        cancel          = 1
+        usage_error     = 2
+        system_error    = 3
+        internal_error  = 4
+        OTHERS          = 5.
+    IF sy-subrc = 0.
+
+      TRY.
+          CALL FUNCTION 'FP_FUNCTION_MODULE_NAME'
+            EXPORTING
+              i_name     = co_adobe_form
+            IMPORTING
+              e_funcname = lv_fmname.
+
+          CALL FUNCTION lv_fmname
+            EXPORTING
+              it_header      = me->mt_form_head
+              it_item        = me->mt_form_item
+            EXCEPTIONS
+              usage_error    = 1
+              system_error   = 2
+              internal_error = 3
+              OTHERS         = 4.
+          IF sy-subrc = 0.
+
+            CALL FUNCTION 'FP_JOB_CLOSE' ##FM_SUBRC_OK
+              EXCEPTIONS
+                usage_error    = 1
+                system_error   = 2
+                internal_error = 3
+                OTHERS         = 4.
+            IF sy-subrc <> 0.
+*             Implement suitable error handling here
+            ENDIF.
+          ENDIF.
+          ##NO_HANDLER
+        CATCH cx_root.
+          ##CATCH_ALL
+      ENDTRY.
+
+    ENDIF.
+
+  ENDMETHOD.
+
+* Method implementation for updating the
+*  column properties
+  METHOD set_column_values.
+
+    LOOP AT io_col ASSIGNING FIELD-SYMBOL(<lfo_col>).
+
+*     For Header level in ALV
+      IF iv_level = 1.
+
+        CASE <lfo_col>-columnname.
+          WHEN 'ARBPL'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-007. " 'Line'.
+            CALL METHOD <lfo_col>-r_column->set_output_length
+              EXPORTING
+                value = 10.
+
+          WHEN 'KTEXT_UP'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-008. "'Line Description'.
+
+          WHEN 'GSTRP'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-009. "'Start Date'.
+
+          WHEN 'CY_SEQNR'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-010. "'Sequence Number'.
+            CALL METHOD <lfo_col>-r_column->set_output_length
+              EXPORTING
+                value = 16.
+
+          WHEN 'GLTRP'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-011. "'Finish Date'.
+            CALL METHOD <lfo_col>-r_column->set_output_length
+              EXPORTING
+                value = 12.
+
+          WHEN 'ZKDAUF'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-012. "'Sales Order and Item'.
+            CALL METHOD <lfo_col>-r_column->set_output_length
+              EXPORTING
+                value = 22.
+
+          WHEN 'ZKDPOS'.
+            CALL METHOD <lfo_col>-r_column->set_visible
+              EXPORTING
+                value = abap_false.
+
+          WHEN 'AUFNR'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-013. "'Production Order'.
+            CALL METHOD <lfo_col>-r_column->set_output_length
+              EXPORTING
+                value = 18.
+
+          WHEN 'PLNBEZ'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-014. "'Material'.
+            CALL METHOD <lfo_col>-r_column->set_output_length
+              EXPORTING
+                value = 20.
+
+          WHEN 'MAKTX'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-015. "'Material Description'.
+
+          WHEN 'GAMNG'.
+            CALL METHOD <lfo_col>-r_column->set_medium_text
+              EXPORTING
+                value = TEXT-016. "'Quantity'.
+
+          WHEN 'GMEIN'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-017. "'UoM'.
+
+          WHEN 'ATWTB'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-018. "'Destination'.
+
+          WHEN 'BT_GAMNG'.
+            CALL METHOD <lfo_col>-r_column->set_medium_text
+              EXPORTING  "'Quantity [BT]'.
+                value = lcl_zp60_mapex=>get_medium_txt( TEXT-019 ).
+
+          WHEN 'MATNR'.
+            CALL METHOD <lfo_col>-r_column->set_visible
+              EXPORTING
+                value = abap_false.
+
+          WHEN 'CONTENT_UP'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-020. "'Pallettization'.
+
+          WHEN 'VEGR1'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-021. "'Pltts'.
+
+          WHEN 'VEGR2'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-022. "'Arrgt'.
+
+          WHEN 'PALL_CODE'.
+            CALL METHOD <lfo_col>-r_column->set_medium_text
+              EXPORTING  "'Pallet Code'.
+                value = lcl_zp60_mapex=>get_medium_txt( TEXT-023 ).
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-023. "'Pallet Code'.
+
+          WHEN 'BRGEW'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-024. "'Gross Weigth'.
+            CALL METHOD <lfo_col>-r_column->set_output_length
+              EXPORTING
+                value = 18.
+
+          WHEN 'GEWEI'.
+            CALL METHOD <lfo_col>-r_column->set_visible
+              EXPORTING
+                value = abap_false.
+
+          WHEN 'CHARG'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-025. "'Lot Number'.
+
+          WHEN 'OBS_TEXT'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-026. "'Observation'.
+        ENDCASE.
+
+*     For Item level in ALV
+      ELSEIF iv_level = 2.
+
+        CASE <lfo_col>-columnname.
+          WHEN 'AUFNR'.
+            CALL METHOD <lfo_col>-r_column->set_visible
+              EXPORTING
+                value = abap_false.
+
+          WHEN 'MATNR'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-027. "'Components'.
+
+          WHEN 'TYPE'.
+            CALL METHOD <lfo_col>-r_column->set_long_text
+              EXPORTING
+                value = TEXT-028. "'Type'.
+        ENDCASE.
+
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+* Method Implementation to Diaplay ALV
+  METHOD display_alv.
+
+    CONSTANTS : lv_iskey TYPE slis_fieldname VALUE 'AUFNR'.
+
+    TRY.
+                                             "#EC CI_FLDEXT_OK[2215424]
+        CALL METHOD cl_salv_hierseq_table=>factory
+          EXPORTING
+            t_binding_level1_level2 = VALUE salv_t_hierseq_binding(
+                                              ( master = lv_iskey
+                                                slave  = lv_iskey ) )
+          IMPORTING
+            r_hierseq               = DATA(obj_alv)
+          CHANGING
+            t_table_level1          = me->mt_form_head
+            t_table_level2          = me->mt_form_item.
+
+*       To Display PDF in Click Save button
+        SET HANDLER me->on_function FOR obj_alv->get_event( ).
+
+*       Sitting PF Status
+        CALL METHOD obj_alv->set_screen_status
+          EXPORTING
+            report        = sy-repid
+            pfstatus      = 'ALVST'
+            set_functions = cl_salv_table=>c_functions_none.
+
+*       Activate Default PF Functions
+        obj_alv->get_functions( )->set_all( abap_true ).
+
+*       Save Layout Activation
+        obj_alv->get_layout( )->set_key(
+                      VALUE salv_s_layout_key( report = sy-repid ) ).
+        obj_alv->get_layout( )->set_save_restriction(
+                      cl_salv_layout=>restrict_none ).
+
+*       Update Columns properties for both
+*         Header and Item level fiels disciption update of ALV
+        DO 2 TIMES.
+          CALL METHOD me->set_column_values
+            EXPORTING
+              io_col   = obj_alv->get_columns( sy-index )->get( )
+              iv_level = sy-index.
+        ENDDO.
+
+*      Set shorting for fields.
+        DATA(lo_sorts) = obj_alv->get_sorts( 1 ).
+LOOP AT VALUE tt_lvc_fname( ( 'ARBPL' )
+                                    ( 'CY_SEQNR' ) )
+          ASSIGNING FIELD-SYMBOL(<fs_field>).
+
+          lo_sorts->add_sort( EXPORTING columnname = <fs_field>
+                                        sequence = if_salv_c_sort=>sort_up ).
+        ENDLOOP.
+
+        obj_alv->display( ).
+
+        ##NO_HANDLER
+      CATCH cx_root.
+        ##CATCH_ALL
+    ENDTRY.
+
+  ENDMETHOD.
+
+* Method Implementation to Create file Path
+  METHOD get_file_path.
+
+    DATA(lv_date) = |{ sy-datum+0(4) }.{ sy-datum+4(2) }| &
+                    |.{ sy-datum+6(2) }|.
+    DATA(lv_time) = |{ sy-uzeit+0(2) }.{ sy-uzeit+2(2) }| &
+                    |.{ sy-uzeit+4(2) }|.
+
+    rv_full_path =  |{ iv_path }{ co_file_name }{ lv_date }| &
+                    |{ co_undsr }{ lv_time }{ co_file_type }| .
+
+  ENDMETHOD.
+
+* Method Implementation for Creating
+*  Semicolon Separated data
+  METHOD get_file_data.
+
+*   Adding data form header table
+    rt_file_data = VALUE #( FOR wa IN me->mt_hdr
+                  ( column = |{ co_1 }{ co_sep }{ wa-gstrp }| &
+                  |{ co_sep }{ wa-arbpl }{ co_sep }| &
+                  |{ lcl_zp60_mapex=>alpha_output( wa-cy_seqnr ) }| &
+                  |{ co_sep }| &
+                  |{ lcl_zp60_mapex=>alpha_output( wa-aufnr ) }| &
+                  |{ co_sep }| &
+                  |{ lcl_zp60_mapex=>matnr_output( wa-plnbez ) }| &
+                  |{ co_sep }{ wa-maktx }{ co_sep }| &
+                  |{ lcl_zp60_mapex=>dec_2_txt( wa-gamng ) }| &
+                  |{ co_sep }{ wa-gmein }{ co_sep }| &
+                  |{ lcl_zp60_mapex=>dec_2_txt( wa-bt_gamng ) }| &
+                  |{ co_sep }| &
+                  |{ wa-charg }{ co_sep }{ wa-umrez  }{ co_sep }| &
+                  |{ lcl_zp60_mapex=>dec_2_txt( wa-atflv_c ) }| &
+                  |{ co_sep }| &
+                  |{ lcl_zp60_mapex=>dec_2_txt( wa-bmsch )   }| &
+                  |{ co_sep }| &
+                  |{ wa-usr01 }{ co_sep }{ wa-atflv_p }{ co_sep }| &
+                  |{ wa-atflv_m }{ co_sep }| &
+                  |{ lcl_zp60_mapex=>dec_2_txt_coma( wa-atflv_s ) }| ) ).
+
+*   Adding data form Item table
+    rt_file_data = VALUE #( BASE rt_file_data FOR wi IN me->mt_itm
+                    ( column = |{ co_2 }{ co_sep }| &
+                    |{ lcl_zp60_mapex=>alpha_output( wi-aufnr ) }| &
+                    |{ co_sep }| &
+                    |{ lcl_zp60_mapex=>matnr_output( wi-matnr ) }| &
+                    |{ co_sep }| &
+                    |{ wi-maktx }{ co_sep }{ wi-dispo }| ) ).
+
+    mt_file_data = VALUE #( ( LINES OF rt_file_data ) ).
+
+  ENDMETHOD.
+
+* Method implementation to create Header Filter
+  METHOD sel_header.
+
+    TRY.
+        rv_hdr_sel =
+          cl_shdb_seltab=>combine_seltabs(
+            EXPORTING
+             it_named_seltabs =
+              VALUE #( ( name = co_aufnr  dref = REF #( s_aufnr[]  ) )
+                       ( name = co_plnbez dref = REF #( s_plnbez[] ) )
+                       ( name = co_werks  dref = REF #( s_werks[]  ) )
+                       ( name = co_auart  dref = REF #( s_auart[]  ) )
+                       ( name = co_cysqnr dref = REF #( s_cysqnr[] ) )
+                       ( name = co_arbpl  dref = REF #( s_arbpl[]  ) )
+                       ( name = co_gstrp  dref = REF #( s_gstrp[]  ) )
+                       ( name = co_gltrp  dref = REF #( s_gltrp[]  ) )
+                       ( name = co_zkdauf dref = REF #( s_zkdauf[] ) )
+                       ( name = co_zkdpos dref = REF #( s_zkdpos[] ) )
+          ) ).
+
+        IF iv_status = abap_true AND rv_hdr_sel IS NOT INITIAL.
+          rv_hdr_sel = |{ rv_hdr_sel } { co_check1 }|.
+        ELSEIF iv_status = abap_true.
+          rv_hdr_sel = co_check2 .
+        ENDIF.
+
+        ##NO_HANDLER
+      CATCH cx_root.
+        ##CATCH_ALL
+    ENDTRY.
+
+  ENDMETHOD.
+
+* Method implementation to create Item Filter
+  METHOD sel_item.
+
+    DATA: p_mattype TYPE RANGE OF mtart.
+
+    p_mattype = VALUE #( sign = co_i option = co_eq ( low = co_abb  )
+                                                    ( low = co_pub  )
+                                                    ( low = co_zpal )
+                                                    ( low = co_zpa2 )
+                                                    ( low = co_unbw )
+                                                    ( low = co_roh  )
+                                                    ( low = co_halb )
+                                                    ( low = co_fert ) ).
+
+    TRY.
+        rv_itm_sel =
+          cl_shdb_seltab=>combine_seltabs(
+            EXPORTING
+             it_named_seltabs =
+              VALUE #( ( name = co_mtart dref = REF #( p_mattype[] ) ) )
+          ).
+
+        ##NO_HANDLER
+      CATCH cx_root.
+        ##CATCH_ALL
+    ENDTRY.
+
+  ENDMETHOD.
+
+ENDCLASS.
