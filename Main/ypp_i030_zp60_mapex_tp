@@ -1,0 +1,19 @@
+TYPES :
+      BEGIN OF st_text_file,
+        column TYPE string,
+      END OF st_text_file,
+      tt_text_file TYPE STANDARD TABLE OF st_text_file WITH DEFAULT KEY,
+      tt_atnam     TYPE TABLE OF  atnam WITH EMPTY KEY,
+      tt_lvc_fname TYPE TABLE OF lvc_fname WITH EMPTY KEY.
+
+    DATA:
+      gv_aufnr  TYPE aufnr,
+      gv_plnbez TYPE matnr,
+      gv_werks  TYPE werks_d,
+      gv_auart  TYPE aufart,
+      gv_cysqnr TYPE cy_seqnr,
+      gv_arbpl  TYPE arbpl,
+      gv_gstrp  TYPE pm_ordgstrp,
+      gv_gltrp  TYPE co_gltrp,
+      gv_zkdauf TYPE kdauf,
+      gv_zkdpos TYPE kdpos.
