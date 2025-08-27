@@ -1,0 +1,153 @@
+@AbapCatalog.viewEnhancementCategory: [#NONE]
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Header data for ZP60'
+@Metadata.ignorePropagatedAnnotations: true
+@ObjectModel.usageType:{
+    serviceQuality: #X,
+    sizeCategory: #S,
+    dataClass: #MIXED
+}
+define view entity YCDS_PP_ZP60_HEADER_DATA
+  with parameters
+    p_language    : syst_langu,
+    p_country     : atinn,
+    p_capacity    : atinn,
+    p_product     : atinn,
+    p_minstrength : atinn,
+    p_specgravity : atinn
+  as select from    afko                 as af
+    inner join      aufk                 as au     on af.aufnr = au.aufnr
+    left outer join mara                 as ma     on af.plnbez = ma.matnr
+    left outer join afvc                 as av     on  af.plnnr = av.plnnr
+                                                   and af.aufpl = av.aufpl
+                                                   and af.plnty = av.plnty
+                                                   and af.plnal = av.plnal
+    left outer join afvu                 as ag     on  ag.aufpl = av.aufpl
+                                                   and ag.aplzl = av.aplzl
+    left outer join afvv                 as ah     on  ah.aufpl = av.aufpl
+                                                   and ah.aplzl = av.aplzl
+    left outer join crhd                 as cr     on av.arbid = cr.objid
+    left outer join crtx                 as cx     on  cx.objty = cr.objty
+                                                   and cx.objid = cr.objid
+                                                   and cx.spras = $parameters.p_language
+    left outer join makt                 as mk     on  af.plnbez = mk.matnr
+                                                   and mk.spras  = $parameters.p_language
+    left outer join marm                 as mr     on  mr.matnr = af.plnbez
+                                                   and mr.meinh = 'CS'
+    left outer join afpo                 as ap     on  af.aufnr  = ap.aufnr
+                                                   and af.plnbez = ap.matnr
+    left outer join marm                 as mr_now on  af.plnbez = mr_now.matnr
+                                                   and af.gmein  = mr_now.meinh
+    left outer join marm                 as mr_get on  af.plnbez    = mr_get.matnr
+                                                   and mr_get.meinh = 'BOT'
+    left outer join ausp                 as aus_c  on  aus_c.objek = af.plnbez
+                                                   and aus_c.atinn = $parameters.p_capacity    //'0000000850' 'Y_CAPACITY'
+    left outer join ausp                 as aus_m  on  aus_m.objek = af.plnbez
+                                                   and aus_m.atinn = $parameters.p_minstrength //'0000000844' 'Y_FR_CVR_MINIMUM_STRENGTH'
+    left outer join ausp                 as aus_s  on  aus_s.objek = af.plnbez
+                                                   and aus_s.atinn = $parameters.p_specgravity //'0000000851' 'Y_SPECIFIC_GRAVITY'
+    left outer join ausp                 as aus_p  on  aus_p.objek = af.plnbez
+                                                   and aus_p.atinn = $parameters.p_product     //'0000000845' 'Y_FR_CVR_PRODUCT_GROUP'
+    left outer join ausp                 as aus_d  on  aus_d.objek = af.plnbez
+                                                   and aus_d.atinn = $parameters.p_country     //'0000000855' 'Y_COUNTRY_DESTINATION'
+    left outer join cawn                 as cn     on  cn.atinn = $parameters.p_country        //'0000000855' 'Y_COUNTRY_DESTINATION'
+                                                   and cn.atwrt = aus_d.atwrt
+    left outer join cawnt                as ct     on  ct.atzhl = cn.atzhl
+                                                   and ct.atinn = $parameters.p_country        //'0000000855' 'Y_COUNTRY_DESTINATION'
+                                                   and ct.spras = $session.system_language
+    left outer join kotp200              as ko     on  ko.kappl = 'PO'
+                                                   and ko.kschl = 'SHIP'
+                                                   and ko.werks = au.werks
+                                                   and ko.matnr = af.plnbez
+    left outer join kondp                as kn     on kn.knumh = ko.knumh
+    left outer join packkp               as pa     on pa.packnr = kn.packnr
+    left outer join packkps              as ps     on  ps.packnr = kn.packnr
+                                                   and ps.spras  = $parameters.p_language
+    left outer join packpo               as pk     on  pk.packnr     = kn.packnr
+                                                   and pk.paitemtype = 'P'
+    left outer join t001w                as t1     on t1.werks = au.werks
+    left outer join jest                 as j_i02  on  j_i02.objnr = au.objnr
+                                                   and j_i02.stat  = 'I0002'
+                                                   and j_i02.inact = ''
+    left outer join YCDS_PP_ZP60_JEST_EX as j_exc  on j_exc.objnr = au.objnr
+{
+  key af.aufnr,
+      au.objnr,
+      af.plnbez,
+      af.objtype,
+      au.bukrs,
+      au.werks,
+      au.auart,
+      au.zkdauf,
+      au.zkdpos,
+      af.gstrp,
+      af.gltrp,
+      af.cy_seqnr,
+      @Semantics.quantity.unitOfMeasure: 'gmein'
+      af.gamng,
+      af.gmein,
+      af.plnnr,
+      af.aufpl,
+      af.plnty,
+      af.plnal,
+      ma.mtart,
+      @Semantics.quantity.unitOfMeasure: 'gewei'
+      ma.brgew,
+      ma.gewei,
+      cr.arbpl,
+      cr.objty,
+      cr.objid,
+      cx.ktext_up,
+      mk.maktx,
+      mr.umrez,
+      mr.meinh,
+      ap.charg,
+      ag.usr01,
+      @Semantics.quantity.unitOfMeasure : 'li_meinh'
+      ah.bmsch,
+      ah.meinh                                          as li_meinh,
+
+      case
+       when af.gmein = 'BOT' then cast( af.gamng as abap.dec(13,3) )
+       else
+        case
+          when ma.meins = 'BOT'
+          then cast( round(cast( af.gamng as abap.dec(13,3))* DIVISION( (mr_now.umrez), (mr_now.umren), 13), 3) as abap.dec(13,3))
+          else cast( round(cast( af.gamng as abap.dec(13,3))* DIVISION( (mr_now.umrez * mr_get.umren), (mr_now.umren * mr_get.umrez), 13), 3) as abap.dec(13,3))
+        end
+      end                                               as bt_gamng,
+      cast( 'BOT' as meins)                             as bt_meins,
+
+      @Semantics.quantity.unitOfMeasure : 'gross_wgh_unt'
+      cast( unit_conversion( quantity  =>  mr.brgew ,
+                     source_unit =>  case
+                                      when mr.gewei is not initial
+                                       then mr.gewei
+                                       else cast( 'KG' as abap.unit ) end ,
+                     target_unit => cast( 'KG' as abap.unit ),
+                     client      => $session.client ) as brgew )       as gross_wgh,
+
+      case when mr.gewei is not initial
+      then cast( 'KG' as abap.unit)
+      else cast( ' ' as abap.unit)  end                 as gross_wgh_unt,
+
+      fltp_to_dec( aus_c.atflv as abap.dec(30,3) ) * 10 as atflv_c,
+      fltp_to_dec( aus_m.atflv as abap.dec(30,3) )      as atflv_m,
+      fltp_to_dec( aus_s.atflv as abap.dec(30,3) )      as atflv_s,
+      aus_p.atwrt                                       as atflv_p,
+      ct.atwtb,
+      pa.vegr1,
+      pa.vegr2,
+      ps.content_up,
+      pk.matnr                                          as pall_code,
+      t1.spras,
+
+      cast( ' ' as abap.char( 256 ) )                   as obs_text,
+
+      case
+      when j_i02.stat = 'I0002' and j_exc.objnr is null then 'X'
+      else ''
+      end                                               as status
+}
+where
+  ma.mtart = 'FERT'
