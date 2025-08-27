@@ -1,0 +1,181 @@
+CLASS yamdp_cl_pp_zp60 DEFINITION
+  PUBLIC
+  FINAL
+  CREATE PUBLIC .
+
+  PUBLIC SECTION.
+    INTERFACES if_amdp_marker_hdb.
+
+    TYPES :tt_header_data TYPE TABLE OF ycds_pp_zp60_header_data,
+           tt_item_data   TYPE TABLE OF ycds_pp_zp60_item_data.
+
+    CLASS-METHODS:
+      get_amdp_data AMDP OPTIONS
+        CDS SESSION CLIENT current
+        IMPORTING
+          VALUE(ifilter_header) TYPE string
+          VALUE(ifilter_item)   TYPE string
+          VALUE(ilanguage)      TYPE sy-langu
+          VALUE(icountry)       TYPE atinn
+          VALUE(icapacity)      TYPE atinn
+          VALUE(iproduct)       TYPE atinn
+          VALUE(iminstrength)   TYPE atinn
+          VALUE(ispecgravity)   TYPE atinn
+        EXPORTING
+          VALUE(et_hd)          TYPE tt_header_data
+          VALUE(et_it)          TYPE tt_item_data.
+
+  PROTECTED SECTION.
+  PRIVATE SECTION.
+ENDCLASS.
+
+
+CLASS yamdp_cl_pp_zp60 IMPLEMENTATION.
+
+  METHOD get_amdp_data BY DATABASE PROCEDURE
+                       FOR HDB LANGUAGE SQLSCRIPT
+                       USING ycds_pp_zp60_header_data
+                       ycds_pp_zp60_item_data
+                       resb.
+
+    et_hd = SELECT
+            hd.aufnr,
+            hd.objnr,
+            hd.plnbez,
+            hd.objtype,
+            hd.bukrs,
+            hd.werks,
+            hd.auart,
+            hd.zkdauf,
+            hd.zkdpos,
+            hd.gstrp,
+            hd.gltrp,
+            hd.cy_seqnr,
+            hd.gamng,
+            hd.gmein,
+            hd.plnnr,
+            hd.aufpl,
+            hd.plnty,
+            hd.plnal,
+            hd.mtart,
+            hd.brgew,
+            hd.gewei,
+            hd.arbpl,
+            hd.objty,
+            hd.objid,
+            hd.ktext_up,
+            hd.maktx,
+            hd.umrez,
+            hd.meinh,
+            hd.charg,
+            hd.usr01,
+            hd.bmsch,
+            hd.li_meinh,
+            hd.bt_gamng,
+            hd.bt_meins,
+            hd.gross_wgh,
+            hd.gross_wgh_unt,
+            hd.atflv_c,
+            hd.atflv_m,
+            hd.atflv_s,
+            hd.atflv_p,
+            hd.atwtb,
+            hd.vegr1,
+            hd.vegr2,
+            hd.content_up,
+            hd.pall_code,
+            hd.spras,
+            string_agg( re.potx1 || nchar(32) || re.potx2 , ' ' ) as obs_text,
+            hd.status
+            FROM  ycds_pp_zp60_header_data
+            ( p_language    => :ilanguage,
+              p_country     => :icountry,
+              p_capacity    => :icapacity,
+              p_product     => :iproduct,
+              p_minstrength => :iminstrength,
+              p_specgravity => :ispecgravity )
+             as hd
+             LEFT OUTER JOIN resb as re
+             on  re.werks =  hd.werks
+             and re.aufnr =  hd.aufnr
+             and re.baugr =  hd.plnbez
+             and re.xloek <> 'X'
+             and re.postp =  'T'
+             GROUP BY
+             hd.aufnr,
+             hd.objnr,
+             hd.plnbez,
+             hd.objtype,
+             hd.bukrs,
+             hd.werks,
+             hd.auart,
+             hd.zkdauf,
+             hd.zkdpos,
+             hd.gstrp,
+             hd.gltrp,
+             hd.cy_seqnr,
+             hd.gamng,
+             hd.gmein,
+             hd.plnnr,
+             hd.aufpl,
+             hd.plnty,
+             hd.plnal,
+             hd.mtart,
+             hd.brgew,
+             hd.gewei,
+             hd.arbpl,
+             hd.objty,
+             hd.objid,
+             hd.ktext_up,
+             hd.maktx,
+             hd.umrez,
+             hd.meinh,
+             hd.charg,
+             hd.usr01,
+             hd.bmsch,
+             hd.li_meinh,
+             hd.bt_gamng,
+             hd.bt_meins,
+             hd.gross_wgh,
+             hd.gross_wgh_unt,
+             hd.atflv_c,
+             hd.atflv_m,
+             hd.atflv_s,
+             hd.atflv_p,
+             hd.atwtb,
+             hd.vegr1,
+             hd.vegr2,
+             hd.content_up,
+             hd.pall_code,
+             hd.spras,
+             hd.status;
+
+    et_hd = APPLY_FILTER (:et_hd, :ifilter_header);
+
+    et_it = SELECT
+            it.aufnr,
+            it.rspos,
+            it.matnr,
+            it.werks,
+            it.bdmng,
+            it.meins,
+            it.mtart,
+            it.type,
+            it.maktx,
+            it.dispo
+            from ycds_pp_zp60_item_data
+            ( p_language => :ilanguage  )
+            as it
+            INNER JOIN :et_hd as hd
+            on  hd.aufnr = it.aufnr
+            and hd.werks = it.werks
+            ORDER BY
+            aufnr,
+            rspos;
+
+    et_it = APPLY_FILTER (:et_it, :ifilter_item);
+
+
+  ENDMETHOD.
+
+ENDCLASS.
