@@ -1,0 +1,52 @@
+@AbapCatalog.viewEnhancementCategory: [#NONE]
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Item data for ZP60'
+@Metadata.ignorePropagatedAnnotations: true
+@ObjectModel.usageType:{
+    serviceQuality: #X,
+    sizeCategory: #S,
+    dataClass: #MIXED
+}
+define view entity YCDS_PP_ZP60_ITEM_DATA
+  with parameters
+    p_language :syst_langu
+  as select from    resb                  as re
+    left outer join mara                  as ma on ma.matnr = re.matnr
+    left outer join makt                  as mk on  mk.matnr = re.matnr
+                                                and mk.spras = $parameters.p_language
+    left outer join marc                  as mr on  mr.matnr = re.matnr
+                                                and mr.werks = re.werks
+    left outer join tvarvc                as tv on  tv.name = 'ZCVR_ZP60_COMPONENTS'
+                                                and tv.type = 'S'
+                                                and tv.sign = 'I'
+                                                and tv.opti = 'BT'
+                                                and tv.low  = ma.matkl
+    left outer join YCDS_PP_ZP60_PK_MATKL as pk on  pk.aufnr = re.aufnr
+                                                and pk.matnr = re.matnr
+{
+  key re.aufnr,
+  key re.rspos,
+  key re.matnr,
+      re.werks,
+      @Semantics.quantity.unitOfMeasure: 'meins'
+      re.bdmng,
+      re.meins,
+      ma.mtart,
+      case substring( ma.matkl,1,2)
+        when 'PK'
+            then
+            case
+            when (tv.high != '' and pk.atwtb != '')
+                then concat(tv.high,pk.atwtb)
+            when pk.atwtb != '' then pk.atwtb
+            else tv.high end
+        else tv.high
+      end as type,
+      mk.maktx,
+      mr.dispo
+}
+where
+      re.aufnr is not initial
+  and re.matnr is not initial
+  and re.xloek <> 'X'
+  and re.postp =  'L'
