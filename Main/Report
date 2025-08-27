@@ -1,0 +1,38 @@
+REPORT ypp_i030_zp60_mapex.
+    
+* Global Values
+INCLUDE ypp_i030_zp60_mapex_tp.
+* Selection Screen
+INCLUDE ypp_i030_zp60_mapex_ss.
+* Main Include
+INCLUDE ypp_i030_zp60_mapex_cl.
+
+*Create Object
+INITIALIZATION.
+  DATA(lobj_mapex) = lcl_zp60_mapex( )=>get_instance( ).
+
+*Screen Update on Varient Create
+AT SELECTION-SCREEN OUTPUT.
+  lcl_zp60_mapex=>screen_output( ).
+
+AT SELECTION-SCREEN.
+  lcl_zp60_mapex=>clear_parameter( CHANGING cv_path = p_path ).
+
+*At Selection-screen Event for Input file
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_path.
+  p_path = lcl_zp60_mapex=>f4_path( ).
+
+*Main Logic
+START-OF-SELECTION.
+  lobj_mapex->get_data( p_status ).
+  IF lobj_mapex->mt_hdr IS NOT INITIAL.
+    IF p_path IS NOT INITIAL AND
+       p_local EQ abap_true.
+      lobj_mapex->download_data( p_path ).
+    ELSE.
+      lobj_mapex->upload_data( p_path ).
+    ENDIF.
+    lobj_mapex->display_alv( ).
+  ELSE.
+    MESSAGE s001(zpp_cvr) DISPLAY LIKE lcl_zp60_mapex=>co_w.
+  ENDIF.
